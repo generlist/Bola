@@ -1,0 +1,394 @@
+#include <stdio.h>
+#include <math.h>
+
+int M=10; //Number of different qualities (bitrates)
+int p=1; //Chunk duration
+int video_length=1800; //video sample length in seconds
+
+double max(double a,double b) //to return the max between two values
+{
+	if(a>b)
+		return a;
+	else
+		return b;
+}
+
+double min(double a,double b) //to return the max between two values
+{
+	if(a<b)
+		return a;
+	else
+		return b;
+}
+
+/* Bola function take values i:which bola to implement, n: the current chunk, buffer:the current buffer level, Q_max: maximum buffer level,br_prv: the bit rate for previous chunk,
+ bw_prv: the bandwidthe for previous chunk; and returns: Vmax: the maximum utility, Q_D the dynamic buffer level, max_br: the bitrate to download the chunk n */
+
+
+double Bola (int i,int n,double buffer,int Q_max,double bw_prv,double *Vmax,double *Q_D,double br_prv)
+{
+	int N = video_length/p; //number of chuncks
+	double BR[11]= {6.000,5.027,2.962,2.056,1.427,0.991,0.688,0.477,0.331,0.230,0}; //Bitrates
+	double Sm[M]; //Segment sizes
+	double Vm[M]; //utilities
+	double value[11]; //the values of optimization problem
+	double max_value=0 ;//the maximum value of equation 9 in paper
+	double max_br=0;//the optimal bitrate in which the chunk will be downloaded*/
+	double max_vm=0;//the maximum utility
+	double V; //control parameter for overflow case
+	double gma=(double)5/(double)p; // control parameter for rebuffering case
+	double SM=INFINITY;
+	double Q_Dmax;//the dynamic maximum buffer level
+	double t_bgn; //play time from begin
+	double t_end; //play time to end
+	double t_Q; //t_Q=min(t_bgn,t_end)
+	double t_prime;//t_prime=max((double)t_Q/2,3*p)
+	double m_prv;//the bitrate index for the previous downloaded chunk
+	int m_n; // the bitrate index for the current chunk to be downloaded
+	int m_prime =M; //initial index M to zero bitrate
+
+
+	for (int m=0;m<M;m++) //compute segments size
+		{
+			Sm[m]=p*BR[m];
+		}
+
+	for(int m=0;m<M;m++)//get the minimum segment size
+		{
+			if (Sm[m] < SM)
+
+					SM = Sm[m];
+
+		}
+
+	for (int m=0;m<M;m++) //compute logaretmic utilities
+		{
+			Vm[m]=log(Sm[m]/SM);
+		}
+
+	switch(i) //Bola cases
+	{
+
+		case 0: //Bola_Basic
+		  {
+			  V=((Q_max/p)-1)/(Vm[0]+(gma*p));
+
+			  	for (int m=0;m<M;m++) //optimization problem (equation 9)
+			  	{
+			  		value[m]= (V*Vm[m]+V*gma*p-(double)(buffer)/(double)p)/Sm[m];
+
+			  	}
+			  	for(int m=0;m<M;m++) //choose m_n that maximize value
+			  	{
+			  		if (value[m] > max_value)
+			  		{
+			  			max_value = value[m];
+			  			m_n=m;
+			  		}
+			  	}
+
+			  	if (max_value==0)
+			  	{
+
+			  		*Vmax=0;
+			  		max_br=0;
+			  	}
+			  	else
+
+			  	{
+			  		*Vmax=Vm[m_n];
+			  		max_br=BR[m_n];
+			  	}
+			  	return(max_br);
+			  	*Q_D=Q_max;
+		break;
+		  }
+
+	case 1: //Bola_Finite
+		  {		max_value=0;
+			    t_bgn=p*n;
+			  	t_end=(N-n)*p;
+			  	t_Q=min(t_bgn,t_end);
+			  	t_prime=max((double)t_Q/2,3*p);
+			  	Q_Dmax=min(Q_max,((double)t_prime)); //in seconds in paper calculated in chunks
+			  	V=((Q_Dmax/p)-1)/(Vm[0]+(gma*p)); //Q_Dmax/p in chunks to compute V
+
+			  	for (int m=0;m<M;m++) //optimization problem (equation 9)
+			  	{
+			  		value[m]= (V*Vm[m]+V*gma*p-(buffer/p))/Sm[m];
+			  	}
+			  	for(int m=0;m<M;m++) //decide on the optimal values vm,BRm
+			  	{
+			  		if (value[m] > max_value)
+			  		{
+			  			max_value = value[m];
+			  			m_n=m;
+			  		}
+			  	}
+			  	if (max_value==0)
+			  		{
+			  			max_br=0;
+			  			*Vmax=0;
+			  		}
+			  	else
+			  		{
+			  			max_br=BR[m_n];
+			  			*Vmax=Vm[m_n];
+			  		}
+			  	return (max_br);
+			  	*Q_D=Q_max;
+		break;
+		  }
+
+	case 2://Bola_U
+	   	  {	max_value=0;
+	   	  	m_prime =M;
+	   		t_bgn=p*n;
+	   		t_end=(N-n)*p;
+	   		t_Q=min(t_bgn,t_end);
+	   		t_prime=max((double)t_Q/2,3*p);
+	   		Q_Dmax=min(Q_max,((double)t_prime)); //in seconds in paper calculated in chunks
+	   		V=((double)((Q_Dmax/p)-1)/(Vm[0]+(gma*p)));//Q_Dmax/p in chunks to compute V
+	   		for (int m=0;m<M;m++) //optimization problem (equation 9)
+	   		{
+	   			value[m]= (V*Vm[m]+V*gma*p-(double)(buffer)/(double)p)/Sm[m];
+
+	   			if (value[m] - max_value > 0)
+	   			{
+	   				max_value = value[m];
+	   				m_n=m;
+				}
+	   			if (BR[m]==br_prv)//get the index of the previous bitrate
+	   			{
+	   				m_prv=m;
+	   			}
+	   		}
+
+	   		if (m_n<m_prv) //Bola U algorithm
+	   		{
+	   			for(int m=0;m<M;m++)
+	   			{
+	   				if ((Sm[m]/p)<= max(bw_prv,Sm[M-1]/p))//m_prime the min m such that (Sm[m]/p)<= max(bw_prv,Sm[M-1]/p)
+	   				{
+	   					if (m<m_prime)
+	   					{
+	 						m_prime = m;
+	   					}
+	   				}
+	   			}
+				if (m_prime<=m_n)
+				{
+	   				m_prime=m_n;
+	   			}
+	   			else
+	   			if (m_prime>m_prv)
+	   			{
+	   				m_prime=m_prv;
+	   			}
+	   			else
+	 			m_prime=m_prime-1;
+				m_n=m_prime;
+	   		}
+
+	   		if (max_value==0)
+	   			{
+	   				*Vmax=0;
+	   				max_br=0;
+	   			}
+	   		else
+	   			{
+
+	   				max_br=BR[m_n];
+	   				*Vmax=Vm[m_n]; //return the optimal utility
+			}
+	   		*Q_D=Q_max;
+	   		return (max_br);
+		break;
+	   	  }
+
+	case 3://Bola_O
+		  {	  max_value=0;
+		  	  m_prime =M;
+			  t_bgn=p*n;
+			  t_end=(N-n)*p;
+			  t_Q=min(t_bgn,t_end);
+			  t_prime=max((double)t_Q/2,3*p);
+			  Q_Dmax=min(Q_max,((double)t_prime)); //in seconds in paper calculated in chunks
+			  V=((double)((Q_Dmax/p)-1)/(Vm[0]+(gma*p)));//Q_Dmax/p in chunks to compute V
+
+			  for (int m=0;m<M;m++) //optimization problem (equation 9)
+			  {
+				  value[m]= (V*Vm[m]+V*gma*p-(double)(buffer)/(double)p)/Sm[m];
+			  }
+			  for(int m=0;m<M;m++)
+			  {
+			  	if (value[m] > max_value)
+				{
+			  		max_value = value[m];
+			  		m_n=m;
+			  	}
+			  }
+			 for(int m=0;m<=M;m++) //get the index of the previous bitrate
+			 {
+		 		if (BR[m]==br_prv)
+		  		{
+		  			m_prv=m;
+		  		}
+			 }
+			  if (m_n<m_prv) //Bola O algorithm
+			  {
+				  for(int m=0;m<M;m++)
+				  {
+					  if ((Sm[m]/p)<= max(bw_prv,Sm[M-1]/p))
+					  {
+						  if (m<m_prime)
+						  {
+							  m_prime = m;
+						  }
+					  }
+				  }
+				  if (m_prime<=m_n)
+				  {
+					  m_prime=m_n;
+				  }
+				  else
+				  if (m_prime>m_prv)
+				  {
+					  m_prime=m_prv;
+				  }
+				  else
+				  if (value[m_prime]<=value[m_prime-1])
+				  {
+					  m_prime=M; //don't download
+				  }
+				  m_n=m_prime;
+			  }
+
+			  if (max_value==0)
+			  	{
+				  *Vmax=0;
+				  max_br=0;
+			  	}
+			  else
+			  	{
+				  max_br=BR[m_n];
+				  *Vmax=Vm[m_n];
+			  	}
+			  *Q_D=Q_Dmax; //return the dynamic buffer level
+			  return (max_br); //return the optimal rate
+		break;
+		  }
+	}
+
+}
+
+//double network_profile (double T,double *rtt) //network profile one in paper
+double network_profile (double T) //network profile one in pape
+{
+	double b[8]={5,4,3,2,1.5,2,3,4};
+	double R[8]={0.076,0.100,0.150,0.176,0.200,0.176,0.150,0.100}; //RTT
+	double br;
+	int i=0;
+	for (double t=0;t<5000;t=t+30)
+	{
+		if (t<=T)
+		{
+			br=b[i];
+		//	*rtt=R[i];
+		}
+		i++;
+		if (i>7)
+		i=0;
+	}
+	return (br);
+}
+
+double main ()
+{
+	int N = video_length/p;
+	double bw[4]={0,0,0,0}; //bandwidth
+	double t[4]={0,0,0,0}; // time
+	double x_dwd[4]; // download time
+	double x[4]={0,0,0,0};
+	double buffer[4]={0,0,0,0}; //buffer level
+	double y[4]={0,0,0,0};	//rebuffering time
+	double total_y[4]={0,0,0,0};	//total rebuffering time
+	double BR[4]={0,0,0,0}; //Bitrate of the downloaded chunk
+	double Vmax[4]={0,0,0,0}; //the utility gained for each chunk
+	double Vm[4]={0,0,0,0}; //acumulated
+	double bw_prv[4];
+	double Q_Dmax[4];
+	double br_prv[4]={0,0,0,0};
+	double Q_max=10;
+	double delta=0.01;
+	double rate_N[4][N];
+	double count[4]={0,0,0,0};
+	double waiting[4]={0,0,0,0};
+
+	printf("The utility gained from Bola \n");
+	printf("Bola_Basic     Bola_finite     Bola_U         Bola_O \n");
+
+		for (int n=1;n<=N;n++)
+		{
+			for(int i=0;i<4;i++) //i=0:Bola_basic,1:Bola_finite,2:Bola_U,3:Bola_O,
+			{	bw_prv[i]=bw[i];
+				bw[i]=network_profile (t[i]); //get the bandwith at time t for each algorithm
+				BR[i]=Bola(i,n,buffer[i],Q_max,bw_prv[i],&Vmax[i],&Q_Dmax[i],br_prv[i]);
+				x_dwd[i]=(p*(double)(BR[i])) /(double)bw[i];
+				x[i]=max(x_dwd[i],buffer[i]+p-Q_Dmax[i]);
+				while (BR[i]==0)//if no download
+				{
+					if (buffer[i]>=Q_Dmax[i]) //overflow case
+					{
+						buffer[i]=buffer[i]-x[i]; //no download occures ,just play out in waiting time
+						t[i]=t[i]+x[i]; // the timei increased in waiting until the buffer has free space
+					}
+					else //bola_O case
+					{
+						waiting[i] += delta;
+						t[i]=t[i]+delta; //wait for delta and recheck the value condition
+						buffer[i]=buffer[i]-delta; //since the play out rate is fixed and equal to 1/p chunks/sec, in delta the buffer is consumed (by 1/p(chunks/sec)*delta(sec)* p(sec)) seconds
+					}
+					BR[i]=Bola(i,n,buffer[i],Q_max,bw_prv[i],&Vmax[i],&Q_Dmax[i],br_prv[i]);//download the chunk after pause
+				}
+
+				br_prv[i]=BR[i]; //get the previous bandwidth
+				bw[i]=network_profile (t[i]); //get the current bandwidth
+				x_dwd[i]=(p*(double)(BR[i])) /(double)bw[i]; //measure the downloading time
+				y[i]=max(x_dwd[i]-buffer[i],0); //rebuffering ocures when the download time is bigger than buffer level
+				total_y[i] += y[i]; //the total rebuffering time
+
+				if (buffer[i]<p) //display threshold
+					buffer[i]=buffer[i]+p;
+				else
+				buffer[i]=buffer[i]+p-x_dwd[i]+y[i]; //update the buffer by downloading one chunk and consumes during the down
+				t[i]=t[i]+x_dwd[i]; 		//increase the time of by the chunk download time
+				Vm[i]=Vm[i]+Vmax[i];		//increase the utility
+
+				rate_N[i][n]=BR[i];
+
+				//printf(" %f ",BR[i]);
+				//printf(" %f ",Size[i]);
+				//printf(" %f ",buffer[i]);
+				//printf(" %f ",Q_Dmax[i]);
+				//printf(" %f ",t[i]);
+				//printf("  \n ");
+}
+	}
+
+		for (int n=0;n<N;n++)
+		{
+			for (int i=0;i<4;i++)
+				{
+					if (rate_N[i][n]!=rate_N[i][n+1]) //measuring the switching in bitrates
+						count[i]=count[i]+1;
+				}
+		}
+	for (int i=0;i<4;i++)
+	{
+		printf(" %f    %f   %f  \n ",Vm[i]/N, total_y[i],count[i]/N); //average utility,total rebufering time, average switching times
+
+	}
+
+}
+
