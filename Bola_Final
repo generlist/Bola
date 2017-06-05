@@ -13,7 +13,7 @@ double max(double a,double b) //to return the max between two values
 		return b;
 }
 
-double min(double a,double b) //to return the max between two values
+double min(double a,double b) //to return the min between two values
 {
 	if(a<b)
 		return a;
@@ -73,7 +73,7 @@ double Bola (int i,int n,double buffer,int Q_max,double bw_prv,double *Vmax,doub
 		  {
 			  V=((Q_max/p)-1)/(Vm[0]+(gma*p));
 
-			  	for (int m=0;m<M;m++) //optimization problem (equation 9)
+			  	for (int m=0;m<M;m++) //optimization problem (equation 9 in the papper)
 			  	{
 			  		value[m]= (V*Vm[m]+V*gma*p-(double)(buffer)/(double)p)/Sm[m];
 
@@ -106,7 +106,7 @@ double Bola (int i,int n,double buffer,int Q_max,double bw_prv,double *Vmax,doub
 
 	case 1: //Bola_Finite
 		  {		max_value=0;
-			    t_bgn=p*n;
+			   	t_bgn=p*n;
 			  	t_end=(N-n)*p;
 			  	t_Q=min(t_bgn,t_end);
 			  	t_prime=max((double)t_Q/2,3*p);
